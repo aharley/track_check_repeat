@@ -1,43 +1,20 @@
 import time
-import argparse
 import numpy as np
-import timeit
 import imageio
-# import tensorflow as tf
-# import scipy.misc
-import io
 import os
-import math
-# import matplotlib
-# from PIL import Image
-# matplotlib.use('Agg') # suppress plot showing
-# import sys
-# import matplotlib.pyplot as plt
-# import matplotlib.animation as animation
-# import cv2
 import saverloader
 import skimage.morphology
 
 from fire import Fire
-import nets.raftnet
 
-def requires_grad(parameters, flag=True):
-    for p in parameters:
-        p.requires_grad = flag
+import nets.raftnet
 
 import utils.basic
 import utils.vox
 import utils.improc
-# import utils.eval
-# import utils.py
-# import utils.box
 import utils.misc
 import utils.samp
 import utils.improc
-# import utils.grouping
-import random
-# import glob
-
 from utils.basic import print_, print_stats
 
 from simplekittidataset import SimpleKittiDataset
@@ -50,6 +27,7 @@ from tensorboardX import SummaryWriter
 
 import torch.nn.functional as F
 
+import random
 device = 'cuda'
 patch_size = 8
 random.seed(125)
@@ -80,6 +58,10 @@ vis_dir = './tcr_vis'
 npz_dir = './tcr_pseudo'
 utils.basic.mkdir(npz_dir)
 utils.basic.mkdir(vis_dir)
+
+def requires_grad(parameters, flag=True):
+    for p in parameters:
+        p.requires_grad = flag
 
 def save_vis(rgb, name):
     rgb = rgb.cpu().numpy()[0].transpose(1,2,0) # H x W x 3

@@ -39,10 +39,6 @@ scene_centroid = np.array([scene_centroid_x,
                            scene_centroid_z]).reshape([1, 3])
 scene_centroid = torch.from_numpy(scene_centroid).float().cuda()
 
-XMIN, XMAX = -32, 32
-ZMIN, ZMAX = 2, 66
-YMIN, YMAX = -3, 5
-
 XMIN, XMAX = -16, 16
 ZMIN, ZMAX = 2, 34
 YMIN, YMAX = -1, 3
