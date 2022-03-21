@@ -6,18 +6,11 @@ import utils.geom
 class SimpleKittiDataset(torch.utils.data.Dataset):
     def __init__(self, shuffle=True, S=1, dset='t', seq_name=None, mod='am', kitti_data_seqlen=1, sort=False, root_dir='/projects/katefgroup/datasets/kitti/processed/npzs', use_complete=False, return_valid=False):
 
-        # kitti_data_mod = 'ak'
-        # kitti_data_mod = 'am'
         kitti_data_mod = 'an'
         kitti_data_incr = 1
 
-        # kitti_dataset_location = '%s/kitti/processed/npzs' % root_dir
-        # kitti_dataset_location = '%s/kitti/npzs' % root_dir
-
         trainset = "t%ss%si%s%s" % (kitti_data_mod, kitti_data_seqlen, kitti_data_incr, dset)
-        # trainset = "t%ss%si%sa" % (kitti_data_mod, kitti_data_seqlen, kitti_data_incr)
-        # trainset = "t%ss%si%sseq11" % (kitti_data_mod, kitti_data_seqlen, kitti_data_incr)
-        # trainset = "t%ss%si%sseq11" % (kitti_data_mod, kitti_data_seqlen, kitti_data_incr)
+
         trainset_format = "ktrack"
         trainset_consec = False
         dataset_location = "%s" % root_dir
@@ -40,9 +33,7 @@ class SimpleKittiDataset(torch.utils.data.Dataset):
         print('checked the first %d, and they seem to be real files' % (nCheck))
 
         if seq_name is not 'any' and seq_name is not None:
-            # records = [fn if ('seq_0008' in fn) for fn in records]
             records = [fn for fn in records if (seq_name in fn)]
-            # print ([x for i,x in enumerate(list5) if x in list6])
             print('trimmed to %d records that match %s' % (len(records), seq_name))
 
         if sort:
@@ -55,16 +46,13 @@ class SimpleKittiDataset(torch.utils.data.Dataset):
         self.return_valid = return_valid
 
     def __getitem__(self, index):
-        # print('getting index', index)
         filename = self.records[index]
         d = np.load(filename, allow_pickle=True)
         d = dict(d)
 
         rgb_camXs = d['rgb_camXs']
-        # xyz_camXs = d['xyz_camXs']
         xyz_veloXs = d['xyz_veloXs']
         cam_T_velos = d['cam_T_velos']
-        # origin_T_camXs = d['origin_T_camXs']
         pix_T_rects = d['pix_T_rects']
         rect_T_cams = d['rect_T_cams']
         boxlists = d['boxlists']
@@ -81,8 +69,7 @@ class SimpleKittiDataset(torch.utils.data.Dataset):
             inds = np.random.choice(S_, size=self.S, replace=False)
         else:
             inds = list(range(self.S))
-        # print('inds', inds)
-
+~
         rgb_camXs = rgb_camXs[inds]
         xyz_veloXs = xyz_veloXs[inds]
         cam_T_velos = cam_T_velos[inds]
@@ -92,8 +79,6 @@ class SimpleKittiDataset(torch.utils.data.Dataset):
         tidlists = tidlists[inds]
         clslists = clslists[inds]
         scorelists = scorelists[inds]
-
-        # print('xyz_camXs', xyz_camXs.shape)
 
         rgb_camXs = torch.from_numpy(rgb_camXs) # S, H, W, 3
         xyz_veloXs = torch.from_numpy(xyz_veloXs) # S, N, 3
@@ -112,7 +97,6 @@ class SimpleKittiDataset(torch.utils.data.Dataset):
         rgb_camXs = rgb_camXs.permute(0, 3, 1, 2)
 
         lrtlists_cam = utils.geom.convert_boxlist_to_lrtlist(boxlists)
-        # rylists = boxlists[:,:,7]
 
         samp = {}
         if self.S==1:
@@ -122,7 +106,6 @@ class SimpleKittiDataset(torch.utils.data.Dataset):
             samp['lrtlist_cam'] = lrtlists_cam[0]
             samp['scorelist'] = scorelists[0]
             samp['tidlist'] = tidlists[0]
-            # samp['rylist'] = rylist
         else:
             samp['rgb_cams'] = rgb_camXs
             samp['xyz_cams'] = xyz_rectXs
@@ -136,5 +119,4 @@ class SimpleKittiDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.records)
         # return 10
-
 
