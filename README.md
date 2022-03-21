@@ -143,7 +143,7 @@ If you use this code for your research, please cite:
 [Adam W. Harley](https://cs.cmu.edu/~aharley),
 [Yiming Zuo](https://zuoym15.github.io/),
 [Jing Wen](https://wenj.github.io/),
-[Shubhankar Potdar](http://smpotdar.com),
+Shubhankar Potdar,
 Ritwick Chaudhry,
 [Katerina Fragkiadaki](http://cs.cmu.edu/~katef/). In CVPR 2021.
 
