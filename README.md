@@ -133,6 +133,39 @@ Then repeat the M and E steps, updating the input/output names as the stages pro
 py tcr_kitti_eval.py --init_dir_3d=your_3d_model_folder
 ```
 
+This will print out some information while it runs, like this:
+```
+...
+eval_08_1e-3_kitti3d_s5ti_go50k_17:43:11_16:46:20; step 000511/665; rtime 0.01; itime 1.38; map@0.1 0.45; map@0.3 0.42; map@0.5 0.25; map@0.7 0.08
+eval_08_1e-3_kitti3d_s5ti_go50k_17:43:11_16:46:20; step 000512/665; rtime 0.00; itime 1.38; map@0.1 0.44; map@0.3 0.42; map@0.5 0.25; map@0.7 0.08
+eval_08_1e-3_kitti3d_s5ti_go50k_17:43:11_16:46:20; step 000513/665; rtime 0.00; itime 1.30; map@0.1 0.44; map@0.3 0.42; map@0.5 0.25; map@0.7 0.08
+...
+```
+
+It will end by printing out a summary like this (for the provided checkpoint):
+```
+----------
+BEV accuracy summary:
+map@iou=0.1: 0.45
+map@iou=0.2: 0.45
+map@iou=0.3: 0.44
+map@iou=0.4: 0.38
+map@iou=0.5: 0.32
+map@iou=0.6: 0.21
+map@iou=0.7: 0.07
+----------
+perspective accuracy summary:
+map@iou=0.1: 0.46
+map@iou=0.2: 0.45
+map@iou=0.3: 0.45
+map@iou=0.4: 0.44
+map@iou=0.5: 0.43
+map@iou=0.6: 0.35
+map@iou=0.7: 0.20
+----------
+```
+
+
 
 
 ### Citation
