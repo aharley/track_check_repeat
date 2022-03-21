@@ -4,13 +4,6 @@ import utils.basic
 import utils.box
 import utils.geom
 
-from collections import defaultdict
-
-window_sz = 2
-cumu_gt_match = defaultdict(list)
-cumu_pred_match = defaultdict(list)
-cumu_pred_scores = defaultdict(list)
-
 def compute_matches(name, overlaps, pred_scores, 
                     iou_threshold=0.5, score_threshold=0.0,
                     oracle=False):
@@ -68,22 +61,6 @@ def compute_matches(name, overlaps, pred_scores,
             pred_match[i] = j
             break
 
-    # print('adding %d gt matches' % len(gt_match))
-    # print('adding %d pred matches' % len(pred_match))
-    
-    # cumu_gt_match[name].append(gt_match)
-    # cumu_pred_match[name].append(pred_match)
-    # cumu_pred_scores[name].append(pred_scores)
-    # if window_sz is not None and len(cumu_gt_match[name])>window_sz:
-    #     cumu_gt_match[name].pop(0)
-    #     cumu_pred_match[name].pop(0)
-    #     cumu_pred_scores[name].pop(0)
-    # gt_match = np.concatenate(cumu_gt_match[name])
-    # pred_match = np.concatenate(cumu_pred_match[name])
-    # pred_scores = np.concatenate(cumu_pred_scores[name])
-    # indices = np.argsort(pred_scores)[::-1]
-    # pred_match = pred_match[indices]
-    
     return gt_match, pred_match, overlaps
 
 
