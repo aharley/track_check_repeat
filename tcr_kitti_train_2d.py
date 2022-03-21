@@ -177,15 +177,11 @@ def run_model(B, model, d, sw, use_augs=True, debug=True):
                 sw.summ_soft_seg_thr('00_debug/seg_%d' % b, seg_g[b:b+1], colormap='tab10')
 
     seg_e = model(rgb)
-    # pos_g = F.interpolate(pos, scale_factor=0.25, mode='nearest').round()
-    # neg_g = F.interpolate(neg, scale_factor=0.25, mode='nearest').round()
-
     seg_loss = compute_loss(seg_e, pos, neg, balanced=True)
     total_loss += seg_loss
     
     if sw is not None and sw.save_this:
         sw.summ_oned('1_outputs/seg_e', torch.sigmoid(seg_e))
-        # seg_e = F.interpolate(torch.sigmoid(seg_e), scale_factor=4)
         seg_e = torch.sigmoid(seg_e)
         pos_e = (seg_e > 0.8).float()
         neg_e = (seg_e < 0.2).float()
