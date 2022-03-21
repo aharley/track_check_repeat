@@ -79,6 +79,25 @@ def normalize(d):
         out[b] = normalize_single(d[b])
     return out
 
+def reduce_masked_mean(x, mask, dim=None, keepdim=False):
+    # x and mask are the same shape, or at least broadcastably so < actually it's safer if you disallow broadcasting
+    # returns shape-1
+    # axis can be a list of axes
+    for (a,b) in zip(x.size(), mask.size()):
+        # if not b==1: 
+        assert(a==b) # some shape mismatch!
+    # assert(x.size() == mask.size())
+    prod = x*mask
+    if dim is None:
+        numer = torch.sum(prod)
+        denom = EPS+torch.sum(mask)
+    else:
+        numer = torch.sum(prod, dim=dim, keepdim=keepdim)
+        denom = EPS+torch.sum(mask, dim=dim, keepdim=keepdim)
+        
+    mean = numer/denom
+    return mean
+
 def gridcloud3d(B, Z, Y, X, norm=False, device='cuda'):
     # we want to sample for each location in the grid
     grid_z, grid_y, grid_x = meshgrid3d(B, Z, Y, X, norm=norm, device=device)

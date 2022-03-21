@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import utils.basic
 import cv2
 import matplotlib
+from matplotlib import cm
 from itertools import combinations
 
 # color conversion libs, for flow vis

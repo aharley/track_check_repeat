@@ -1,6 +1,7 @@
 import torch
 import utils.basic
 import numpy as np
+import torchvision.ops as ops
 
 def eye_3x3(B, device='cuda'):
     rt = torch.eye(3, device=torch.device(device)).view(1,3,3).repeat([B, 1, 1])
@@ -677,3 +678,54 @@ def get_xyzlist_from_lrtlist(lrtlist, include_clist=False):
         clist_cam = get_clist_from_lrtlist(lrtlist).unsqueeze(2)
         xyzlist_cam = torch.cat([xyzlist_cam, clist_cam], dim=2)
     return xyzlist_cam
+
+def normalize_boxlist2d(boxlist2d, H, W):
+    boxlist2d = boxlist2d.clone()
+    ymin, xmin, ymax, xmax = torch.unbind(boxlist2d, dim=2)
+    ymin = ymin / float(H)
+    ymax = ymax / float(H)
+    xmin = xmin / float(W)
+    xmax = xmax / float(W)
+    boxlist2d = torch.stack([ymin, xmin, ymax, xmax], dim=2)
+    return boxlist2d
+
+def unnormalize_boxlist2d(boxlist2d, H, W):
+    boxlist2d = boxlist2d.clone()
+    ymin, xmin, ymax, xmax = torch.unbind(boxlist2d, dim=2)
+    ymin = ymin * float(H)
+    ymax = ymax * float(H)
+    xmin = xmin * float(W)
+    xmax = xmax * float(W)
+    boxlist2d = torch.stack([ymin, xmin, ymax, xmax], dim=2)
+    return boxlist2d
+
+def unnormalize_box2d(box2d, H, W):
+    return unnormalize_boxlist2d(box2d.unsqueeze(1), H, W).squeeze(1)
+
+def normalize_box2d(box2d, H, W):
+    return normalize_boxlist2d(box2d.unsqueeze(1), H, W).squeeze(1)
+
+def crop_and_resize(im, box2d, PH, PW, box2d_is_normalized=True):
+    B, C, H, W = im.shape
+    B2, D = box2d.shape
+    assert(B==B2)
+    assert(D==4)
+    # PH, PW is the size to resize to
+
+    # output is B x C x PH x PW
+
+    # pt wants xy xy, unnormalized
+    if box2d_is_normalized:
+        box2d_unnorm = unnormalize_boxlist2d(box2d.unsqueeze(1), H, W).squeeze(1)
+    else:
+        box2d_unnorm = box2d
+        
+    ymin, xmin, ymax, xmax = box2d_unnorm.unbind(1)
+    # box2d_pt = torch.stack([box2d_unnorm[:,1], box2d_unnorm[:,0], box2d_unnorm[:,3], box2d_unnorm[:,2]], dim=1)
+    box2d_pt = torch.stack([xmin, ymin, xmax, ymax], dim=1)
+    # we want a B-len list of K x 4 arrays
+    box2d_list = list(box2d_pt.unsqueeze(1).unbind(0))
+    rgb_crop = ops.roi_align(im, box2d_list, output_size=(PH, PW))
+
+    return rgb_crop
+    

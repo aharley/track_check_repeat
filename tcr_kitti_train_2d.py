@@ -1,41 +1,37 @@
 import time
-import argparse
+# import argparse
 import numpy as np
-import timeit
-import imageio
-import matplotlib
-# import tensorflow as tf
-# import scipy.misc
-import io
-import os
-import math
-from PIL import Image
-matplotlib.use('Agg') # suppress plot showing
-import sys
+# import timeit
+# import imageio
+# # import matplotlib
+# # import tensorflow as tf
+# # import scipy.misc
+# import io
+# import os
+# # import math
+# # from PIL import Image
+# # matplotlib.use('Agg') # suppress plot showing
+# import sys
 
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
-import matplotlib.animation as animation
-import cv2
+# import matplotlib.animation as animation
+# import cv2
 import saverloader
 import skimage.morphology
 
 from fire import Fire
 
-def requires_grad(parameters, flag=True):
-    for p in parameters:
-        p.requires_grad = flag
-
-import utils.perceiver
-import utils.py
-import utils.box
+# import utils.perceiver
+# import utils.py
+# import utils.box
 import utils.misc
 import utils.improc
-import utils.vox
-import utils.grouping
-import random
-import glob
-import color2d
+# import utils.vox
+# import utils.grouping
+# import random
+# import glob
+# import color2d
 
 from utils.basic import print_, print_stats
 
@@ -51,11 +47,10 @@ import torch.nn.functional as F
 
 import nets.seg2dnet
 
+import random
 device = 'cuda'
-patch_size = 8
 random.seed(125)
 np.random.seed(125)
-
 
 scene_centroid_x = 0.0
 scene_centroid_y = 1.0
@@ -181,9 +176,6 @@ def run_model(B, model, d, sw, use_augs=True, debug=True):
                 # size_factor = (ymax-ymin)/H
                 # xmax = (xmin + size_factor*W).long()
 
-                # box2d_crop = torch.stack([ymin, xmin, ymax, xmax]).reshape(1, 4).float().cuda()
-                # box2d_crop = utils.geom.normalize_box2d(box2d_crop, H, W)
-
                 zoomout_factor = torch.from_numpy(np.random.uniform(0.5, 2.0, size=1).astype(np.float32)).cuda()
                 xc = torch.from_numpy(np.random.uniform(int(W/4), int(W-W/4), size=1)).cuda().long()
                 yc = torch.from_numpy(np.random.uniform(int(H/4), int(H-H/4), size=1)).cuda().long()
@@ -232,16 +224,16 @@ def run_model(B, model, d, sw, use_augs=True, debug=True):
                 sw.summ_soft_seg_thr('00_debug/seg_%d' % b, seg_g[b:b+1], colormap='tab10')
 
     seg_e = model(rgb)
+    # pos_g = F.interpolate(pos, scale_factor=0.25, mode='nearest').round()
+    # neg_g = F.interpolate(neg, scale_factor=0.25, mode='nearest').round()
 
-    pos_g = F.interpolate(pos, scale_factor=0.25, mode='nearest').round()
-    neg_g = F.interpolate(neg, scale_factor=0.25, mode='nearest').round()
-
-    seg_loss = compute_loss(seg_e, pos_g, neg_g, balanced=True)
+    seg_loss = compute_loss(seg_e, pos, neg, balanced=True)
     total_loss += seg_loss
     
     if sw is not None and sw.save_this:
         sw.summ_oned('1_outputs/seg_e', torch.sigmoid(seg_e))
-        seg_e = F.interpolate(torch.sigmoid(seg_e), scale_factor=4)
+        # seg_e = F.interpolate(torch.sigmoid(seg_e), scale_factor=4)
+        seg_e = torch.sigmoid(seg_e)
         pos_e = (seg_e > 0.8).float()
         neg_e = (seg_e < 0.2).float()
 
