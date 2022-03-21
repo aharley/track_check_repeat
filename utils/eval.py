@@ -169,6 +169,34 @@ def get_mAP_from_lrtlist(lrtlist_e, scores, lrtlist_g, iou_thresholds):
     # print("maps_3d", maps_3d)
     return maps_3d, maps_2d
 
+def get_mAP_from_2d_boxlists(boxlist_e, scores, boxlist_g, iou_thresholds):
+    # boxlists are 1 x N x 4
+    B, Ne, _ = list(boxlist_e.shape)
+    B, Ng, _ = list(boxlist_g.shape)
+    assert(B==1)
+    
+    boxlist_e = boxlist_e.detach().cpu().numpy()
+    boxlist_g = boxlist_g.detach().cpu().numpy()
+    scores = scores.detach().cpu().numpy()
+    
+    # print("e", boxes_e, "g", boxes_g, "score", scores)
+    scores = scores.flatten()
+    # size [N, 8, 3]
+    ious_2d = np.zeros((Ne, Ng), dtype=np.float32)
+    for i in list(range(Ne)):
+        iou_2d = utils.box.boxlist_2d_iou(boxlist_e[:,i:i+1].repeat(Ng, axis=1), boxlist_g)
+        ious_2d[i,:] = iou_2d[0].squeeze(axis=1)
+    maps_2d = []
+    for iou_threshold in iou_thresholds:
+        map2d, precision, recall, overlaps = compute_ap(
+            "box2d_" + str(iou_threshold), scores, ious_2d, iou_threshold=iou_threshold)
+        maps_2d.append(map2d)
+    maps_2d = np.stack(maps_2d, axis=0).astype(np.float32)
+    if np.isnan(maps_2d).any():
+        # print('got these nans in maps; setting to zero:', maps)
+        maps_2d[np.isnan(maps_2d)] = 0.0
+    return maps_2d
+
 def get_iou_from_corresponded_lrtlists(lrtlist_a, lrtlist_b):
     B, N, D = list(lrtlist_a.shape)
     assert(D==19)

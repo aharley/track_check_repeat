@@ -665,6 +665,99 @@ class Summ_writer(object):
         # utils.basic.print_stats_py('rgb_uint8', rgb)
         # imageio.imwrite('boxes_rgb.png', rgb)
         return rgb
+
+    def summ_boxlist2d(self, name, rgb, boxlist, scores=None, tids=None, frame_id=None, only_return=False):
+        B, C, H, W = list(rgb.shape)
+        boxlist_vis = self.draw_boxlist2d_on_image(rgb, boxlist, scores=scores, tids=tids)
+        return self.summ_rgb(name, boxlist_vis, frame_id=frame_id, only_return=only_return)
+    
+    def draw_boxlist2d_on_image(self, rgb, boxlist, scores=None, tids=None):
+        B, C, H, W = list(rgb.shape)
+        assert(C==3)
+        B2, N, D = list(boxlist.shape)
+        assert(B2==B)
+        assert(D==4) # ymin, xmin, ymax, xmax
+
+        rgb = back2color(rgb)
+        if scores is None:
+            scores = torch.ones(B2, N).float()
+        if tids is None:
+            tids = torch.zeros(B2, N).long()
+        out = self.draw_boxlist2d_on_image_py(
+            rgb[0].cpu().detach().numpy(),
+            boxlist[0].cpu().detach().numpy(),
+            scores[0].cpu().detach().numpy(),
+            tids[0].cpu().detach().numpy())
+        out = torch.from_numpy(out).type(torch.ByteTensor).permute(2, 0, 1)
+        out = torch.unsqueeze(out, dim=0)
+        out = preprocess_color(out)
+        out = torch.reshape(out, [1, C, H, W])
+        return out
+    
+    def draw_boxlist2d_on_image_py(self, rgb, boxlist, scores, tids, thickness=1):
+        # all inputs are numpy tensors
+        # rgb is H x W x 3
+        # boxlist is N x 4
+        # scores is N
+        # tids is N
+
+        rgb = np.transpose(rgb, [1, 2, 0]) # put channels last
+        rgb = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+
+        H, W, C = rgb.shape
+        assert(C==3)
+        N, D = boxlist.shape
+        assert(D==4)
+
+        color_map = matplotlib.cm.get_cmap('tab20')
+        color_map = color_map.colors
+
+        # draw
+        for ind, box in enumerate(boxlist):
+            # box is 4
+            if not np.isclose(scores[ind], 0.0):
+                # box = utils.geom.scale_box2d(box, H, W)
+                ymin, xmin, ymax, xmax = box
+
+
+                ymin, ymax = ymin*H, ymax*H
+                xmin, xmax = xmin*W, xmax*W
+                
+                # print 'score = %.2f' % scores[ind]
+                color_id = tids[ind] % 20
+                color = color_map[color_id]
+                color = np.array(color)*255.0
+                color = color[::-1]
+                # print 'tid = %d; score = %.3f' % (tids[ind], scores[ind])
+
+                # if False:
+                if scores[ind] < 1.0: # not gt
+                    cv2.putText(rgb,
+                                # '%d (%.2f)' % (tids[ind], scores[ind]), 
+                                '%.2f' % (scores[ind]), 
+                                (int(xmin), int(ymin)),
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                0.5, # font size
+                                color),
+                    #1) # font weight
+
+                xmin = np.clip(int(xmin), 0,  W-1)
+                xmax = np.clip(int(xmax), 0,  W-1)
+                ymin = np.clip(int(ymin), 0,  H-1)
+                ymax = np.clip(int(ymax), 0,  H-1)
+
+                cv2.line(rgb, (xmin, ymin), (xmin, ymax), color, thickness, cv2.LINE_AA)
+                cv2.line(rgb, (xmin, ymin), (xmax, ymin), color, thickness, cv2.LINE_AA)
+                cv2.line(rgb, (xmax, ymin), (xmax, ymax), color, thickness, cv2.LINE_AA)
+                cv2.line(rgb, (xmax, ymax), (xmin, ymax), color, thickness, cv2.LINE_AA)
+                
+        rgb = cv2.cvtColor(rgb.astype(np.uint8), cv2.COLOR_BGR2RGB)
+        return rgb
+    
+    def summ_histogram(self, name, data):
+        if self.save_this:
+            data = data.flatten() 
+            self.writer.add_histogram(name, data, global_step=self.global_step)
         
 def preprocess_color(x):
     if isinstance(x, np.ndarray):
