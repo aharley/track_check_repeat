@@ -1,5 +1,7 @@
 import time
+import os
 import numpy as np
+import imageio
 import saverloader
 import skimage.morphology
 from fire import Fire
@@ -51,11 +53,20 @@ Z2, Y2, X2 = Z//2, Y//2, X//2
 Z4, Y4, X4 = Z//4, Y//4, X//4
 Z8, Y8, X8 = Z//8, Y//8, X//8
 
+vis_dir = './tcr_vis'
+utils.basic.mkdir(vis_dir)
+
 def requires_grad(parameters, flag=True):
     for p in parameters:
         p.requires_grad = flag
     
-def run_model(B, model_3d, d, sw, export_vis=False, export_npzs=False):
+def save_vis(rgb, name):
+    rgb = rgb.cpu().numpy()[0].transpose(1,2,0) # H x W x 3
+    vis_fn = os.path.join(vis_dir, '%s.png' % (name))
+    imageio.imwrite(vis_fn, rgb)
+    print('saved %s' % vis_fn)
+    
+def run_model(B, model_3d, d, sw, export_vis=False, step_name='temp', export_npzs=False):
     total_loss = torch.tensor(0.0, requires_grad=True).to(device)
     metrics = {}
     metrics['maps_bev'] = [i*0 for i in iou_thresholds] # mAP=0 by default
@@ -166,6 +177,30 @@ def run_model(B, model_3d, d, sw, export_vis=False, export_npzs=False):
         # mAP unaffected
         metrics['maps_bev'] = None
         metrics['maps_per'] = None
+
+    if sw.save_this and export_vis:
+        tidlist_e = 2*torch.ones_like(scorelist_e).long()
+
+        if metrics['maps_bev'] is not None:
+            mAP = metrics['maps_bev'][4] # map@0.5
+        else:
+            mAP = 0
+            
+        # get perspective vis
+        vis_per = sw.summ_lrtlist('', rgb_cam, lrtlist_e, scorelist_e, tidlist_e, pix_T_cam, frame_id=mAP, include_zeros=True, only_return=True)
+
+        # get bev vis
+        occ_mem_high = vox_util.voxelize_xyz(xyz_cam, Z*2, Y*2, X*2)
+        vis_bev = sw.summ_lrtlist_bev('',occ_mem_high,lrtlist_cam_e,scorelist_e,tidlist_e,vox_util,only_return=True)
+
+        # pad bev to match the (wider) perspective vis
+        pad_w = int(W-Z*2)//2
+        vis_bev = F.pad(vis_bev, (pad_w, pad_w))
+
+        # cat and save
+        vis_both = torch.cat([vis_per, vis_bev], dim=2)
+        save_vis(vis_both, step_name)
+        
         
     return total_loss, metrics
 
@@ -181,6 +216,7 @@ def main(
         seq_name='any',
         sort=True,
         skip_to=0,
+        show_thresh=0.5,
 ):
     
     ## autogen a name
@@ -209,7 +245,7 @@ def main(
     global_step = 0
 
     stride = 4
-    model_3d = nets.centernet2d.Centernet2d(Y=Y, K=20, show_thresh=0.5, stride=stride).cuda()
+    model_3d = nets.centernet2d.Centernet2d(Y=Y, K=20, show_thresh=show_thresh, stride=stride).cuda()
     parameters = list(model_3d.parameters())
     _ = saverloader.load(init_dir_3d, model_3d)
     requires_grad(parameters, False)
@@ -246,7 +282,9 @@ def main(
         iter_start_time = time.time()
 
         if global_step >= skip_to:
-            _, metrics = run_model(B, model_3d, sample, sw_t, export_vis=export_vis, export_npzs=export_npzs)
+            step_name = '%s_%s_%04d' % (seq_name, exp_name, global_step)
+            
+            _, metrics = run_model(B, model_3d, sample, sw_t, export_vis=export_vis, export_npzs=export_npzs, step_name=step_name)
             
             if metrics['maps_bev'] is not None:
                 for i,m in enumerate(metrics['maps_bev']):
