@@ -2,7 +2,14 @@
 
 This is the official code release for our CVPR21 paper on unsupervised detection and tracking. It produces results slightly better than reported in the paper.
 
+
 **[[Paper](https://openaccess.thecvf.com/content/CVPR2021/papers/Harley_Track_Check_Repeat_An_EM_Approach_to_Unsupervised_Tracking_CVPR_2021_paper.pdf)] [[Project Page](http://www.cs.cmu.edu/~aharley/em_cvpr21/)]**
+
+
+<img src='http://cs.cmu.edu/~aharley/images/em_loop_kitti.gif'>
+
+**We use ensemble agreement between 2d and 3d models, as well as motion cues, to unsupervisedly learn object detectors from scratch.** Top: 3d detections. Middle: 2d segmentation. Bottom-left: unprojected 2d segmentation, in a bird's eye view. Bottom-right: 3d detections, in a bird's eye view. 
+
 
 ### Overview
 
