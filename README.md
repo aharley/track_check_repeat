@@ -81,17 +81,15 @@ This repo | **0.60** | **0.59** | **0.59** | **0.56** | **0.49** | **0.40** | **
 
 The method in this repo is slightly different and easier to "get working" than the method in the paper.
 
-First, we improve the model in two ways: 
+We improve the model in the following ways:
 
 - **We use 2d BEV convs in the 3d CenterNet model, instead of 3d convs.** This allows higher resolution and a deeper model.
 
-- **We estimate 3d segmentation in addition to center-ness, and use this in the ensemble.** The connected components step depends on accurate shape estimation, so the 3d segmentation here makes more sense than the center-ness heatmap, and leads to finding boxes that are much closer to ground truth. We implement this simply by adding new channels to the CenterNet.
+- **We estimate 3d segmentation in addition to centerness, and use this in the ensemble.** The connected components step depends on accurate shape estimation, so the 3d segmentation here makes more sense than the centerness heatmap, and leads to finding boxes that are much closer to ground truth. We implement this simply by adding new channels to the CenterNet.
 
 - **We replace the additive ensemble with a multiplicative one.** Previously, we added together all our signals (independent motion, 2d objectness, 3d objectness, occupancy), and tuned a threshold on this sum. Now, we multiply everything together: a region is only considered an object if (1) it is moving independently, *and* (2) the 2d segmentor fired, *and* (3) the 3d segmentor fired, *and* (4) it is occupied. This gives lower recall but higher precision, and it reduces drift.
 
-Also, we simplify the model, by eliminating a hyperparameter:
-
-- **We eliminate center-surround saliency scoring/thresholding** (Equation 7 in the CVPR paper). Previously, center-surround saliency was critical for discarding pseudo-labels that cut an object in half. In the current version (thanks to the multiplicative ensemble and segmentation estimates), this happens less frequently, and so we are able to remove it. This is good news, because tuning the center-surround saliency threshold was tricky in the original work. Note that a type of center-surround still exists, since we only take objects that are moving independently from their background.
+- **We eliminate center-surround saliency scoring/thresholding** (Equation 7 in the CVPR paper). Previously, center-surround saliency was critical for discarding pseudo-labels that cut an object in half. In the current version (thanks to the multiplicative ensemble and segmentation estimates), this happens less frequently, so we are able to remove this step. This is good news, because tuning the threshold on center-surround saliency was tricky in the original work. Note that a type of center-surround still exists, since we only take objects that are moving independently from their background.
 
 
 ### Training from scratch
