@@ -24,9 +24,9 @@ Also, download a [RAFT](https://github.com/princeton-vl/RAFT) model, and put its
 
 ### Data
 
-We use a subset of the KITTI dataset. We use sequences 0000-0008 for training, and sequences 0009-0010 for testing. If you are familiar with KITTI, you can swap out `simplekittidataset.py` with your own dataloader.
+In this repo we focus on the KITTI dataset. We use sequences 0000-0008 for training, and sequences 0009-0010 for testing. If you are familiar with KITTI, you can swap out `simplekittidataset.py` with your own dataloader.
 
-To use our dataloader, download [kitti_prep.tar.gz](https://drive.google.com/file/d/1g1tCuTB4jSON4NLBP28Qi1FNDLHGhcby/view?usp=sharing) (12g).
+To use our dataloader, download [kitti_prep.tar.gz](https://drive.google.com/file/d/1g1tCuTB4jSON4NLBP28Qi1FNDLHGhcby/view?usp=sharing) (12g), untar it somewhere, and update the `root_dir` in `simplekittidataset.py`. 
 
 Our prepared npzs include (up to) 1000 2-frame snippets from each sequence. (Some sequences are less than 1000 frames long.) Each npz has the following data:
 ```
