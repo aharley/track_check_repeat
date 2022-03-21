@@ -3,7 +3,7 @@ import utils.geom
 import utils.basic
 import utils.samp
 import numpy as np
-
+import torch.nn.functional as F
 
 class Vox_util(object):
     def __init__(self, Z, Y, X, scene_centroid, bounds, pad=None, assert_cube=False):
@@ -175,7 +175,35 @@ class Vox_util(object):
         vox = self.get_occupancy(xyz_mem, Z, Y, X, clean_eps=clean_eps)
         return vox
 
+    def get_occupancy_single(self, xyz, Z, Y, X, clean_eps=0):
+        # xyz is N x 3 and in mem coords
+        # we want to fill a voxel tensor with 1's at these inds
 
+        # (we have a full parallelized version, but fill_ray_single needs this)
+
+        inbounds = self.get_inbounds_single(xyz, Z, Y, X, already_mem=True)
+        xyz = xyz[inbounds]
+        # xyz is N x 3
+
+        if clean_eps > 0:
+            # only take points that are already near centers
+            xyz_round = torch.round(xyz)
+            absdiff = torch.norm(xyz_round - xyz, dim=1)
+            xyz = xyz_round[absdiff < 0.1]
+        else:
+            # this is more accurate than a cast/floor, but runs into issues when a dim==0
+            xyz = torch.round(xyz).int()
+            
+        x, y, z = xyz[:,0], xyz[:,1], xyz[:,2]
+
+        vox_inds = utils.basic.sub2ind3d(Z, Y, X, z, y, x)
+        vox_inds = vox_inds.flatten().long()
+        voxels = torch.zeros(Z*Y*X, dtype=torch.float32, device=xyz.device)
+        voxels[vox_inds] = 1.0
+        voxels = voxels.reshape(1, Z, Y, X)
+        # 1 x Z x Y x X
+        return voxels
+    
     def get_occupancy(self, xyz, Z, Y, X, clean_eps=0):
         # xyz is B x N x 3 and in mem coords
         # we want to fill a voxel tensor with 1's at these inds

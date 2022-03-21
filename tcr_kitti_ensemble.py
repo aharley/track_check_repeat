@@ -1,39 +1,17 @@
 import time
-import argparse
-import numpy as np
-import timeit
-import imageio
-import io
 import os
-import math
-import sys
-# import matplotlib
-# from PIL import Image
-# matplotlib.use('Agg') # suppress plot showing
-# import matplotlib.pyplot as plt
-# import matplotlib.animation as animation
-import cv2
+import numpy as np
 import saverloader
 import skimage.morphology
 
-def requires_grad(parameters, flag=True):
-    for p in parameters:
-        p.requires_grad = flag
+from fire import Fire
 
-import utils.eval
-import utils.py
-import utils.box
 import utils.misc
 import utils.improc
 import utils.vox
-import utils.grouping
-import random
-import glob
-import color2d
-
+import utils.geom
+import utils.eval
 from utils.basic import print_, print_stats
-
-from fire import Fire
 
 from simplekittidataset import SimpleKittiDataset
 
@@ -42,25 +20,20 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 
 from tensorboardX import SummaryWriter
-
 import torch.nn.functional as F
 
-import nets.raftnet
-import nets.seg2dnet
-# import nets.seg3dnet
-# import nets.bevdet
 import nets.centernet2d
+import nets.seg2dnet
+import nets.raftnet
 
+import random
 device = 'cuda'
-patch_size = 8
 random.seed(125)
 np.random.seed(125)
 
 iou_thresholds = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
 
 scene_centroid_x = 0.0
-# scene_centroid_y = 1.0 #hyp.YMIN
-# scene_centroid_z = 18.0
 scene_centroid_y = 1.0
 scene_centroid_z = 0.0
 
@@ -75,11 +48,7 @@ YMIN, YMAX = -1, 3
 
 bounds = (XMIN, XMAX, YMIN, YMAX, ZMIN, ZMAX)
 
-sc = 8
-# Z, Y, X = ZMAX*sc, YMAX*sc, XMAX*sc
-# Z, Y, X = 512, 32, 512
 Z, Y, X = 256, 16, 256
-
 Z2, Y2, X2 = Z//2, Y//2, X//2
 Z4, Y4, X4 = Z//4, Y//4, X//4
 Z8, Y8, X8 = Z//8, Y//8, X//8
@@ -184,7 +153,7 @@ def run_model(B, raft, model_2d, model_3d, d, sw, export_vis=False, export_npzs=
     inlier_thresh_3d = 0.25 # meters; max disagreement with the rigid motion
     inlier_thresh_2d = 2.0 # pixels
     corresp_thresh_3d = 0.1 # meters; max displacement from an existing point, to call it a new corresp
-    cam1_T_cam0, align_error, corresp_tuple = utils.grouping.get_cycle_consistent_transform(
+    cam1_T_cam0, align_error, corresp_tuple = utils.misc.get_cycle_consistent_transform(
         xyz_cam0, xyz_cam1,
         flow_01, flow_10,
         pix_T_cam, H, W,
@@ -218,10 +187,12 @@ def run_model(B, raft, model_2d, model_3d, d, sw, export_vis=False, export_npzs=
     occ_mem0_o = vox_util.voxelize_xyz(xyz_cam0_o, Z, Y, X)
     occ_mem1_o = vox_util.voxelize_xyz(xyz_cam1_o, Z, Y, X)
     explained_by_ego = utils.improc.dilate3d(occ_mem0_i)
+
+    # push the rays a bit farther
+    # we will use this extended occupancy as a mask on the estimates
     occ_mem0_ext = vox_util.voxelize_xyz(torch.cat([xyz_cam0, xyz_cam0*1.01, xyz_cam0*1.02], dim=1), Z, Y, X)
     free_mem0 = vox_util.get_freespace(xyz_cam0, occ_mem0)
     occ_mem0_ext = (occ_mem0_ext - free_mem0).clamp(0,1)
-    # occ_mem0_fat = utils.improc.dilate3d(occ_mem0).clamp(0,1)
 
     max_align_error = torch.max(align_error)
     # print_('max_align_error', max_align_error)
@@ -275,8 +246,6 @@ def run_model(B, raft, model_2d, model_3d, d, sw, export_vis=False, export_npzs=
     # print_stats('seg3d_e', seg3d_e)
 
     seg2d_e = torch.sigmoid(model_2d(rgb_cam0)) # B, 1, H4, W4
-    # print_stats('seg2d_e', seg2d_e)
-    seg2d_e = F.interpolate(seg2d_e, scale_factor=4) # B, 1, H, W
     seg2d_mem = vox_util.unproject_image_to_mem(
         seg2d_e, Z, Y, X, pix_T_cam, assert_cube=False)
     # print_stats('seg2d_mem', seg2d_mem)
@@ -284,10 +253,6 @@ def run_model(B, raft, model_2d, model_3d, d, sw, export_vis=False, export_npzs=
     # bin_mem = (prod_mem>0.95).float() * (1-utils.improc.dilate3d(free_mem0))
     bin_mem = (prod_mem>0.9).float()
     bin_mem = utils.improc.erode3d(bin_mem)
-
-    # # bin_mem_clean = utils.improc.erode3d(utils.improc.dilate3d(occ_mem0_ext, times=2))
-    # bin_mem_clean = utils.improc.erode3d(utils.improc.dilate3d(occ_mem0, times=2))
-    # bin_mem_clean = bin_mem * bin_mem_clean
 
     bin_mem_clean = bin_mem * utils.improc.erode3d(utils.improc.dilate3d(occ_mem0_ext, times=3)) * (1-free_mem0)
 
@@ -455,16 +420,17 @@ def main(
     # this file implements the 2d-3d ensemble, for E steps past the first 
     
     ## autogen a name
-    model_name = "%s" % exp_name
+    model_name = "ensemble"
     if export_npzs:
         model_name += "_export_%s" % output_name
+    model_name += "_%s" % exp_name
     import datetime
     model_date = datetime.datetime.now().strftime('%H:%M:%S')
     model_name = model_name + '_' + model_date
     print('model_name', model_name)
     
     ckpt_dir = 'checkpoints/%s' % model_name
-    log_dir = 'logs_tcr_kitti_ensemble2'
+    log_dir = 'logs_tcr_kitti_ensemble'
     writer_t = SummaryWriter(log_dir + '/' + model_name + '/t', max_queue=10, flush_secs=60)
 
     B = 1

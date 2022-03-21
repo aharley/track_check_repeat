@@ -45,6 +45,10 @@ def matmul4(mat1, mat2, mat3, mat4):
 def sub2ind(height, width, y, x):
     return y*width + x
 
+def sub2ind3d(depth, height, width, d, h, w):
+    # when gathering/scattering with these inds, the tensor should be Z x Y x X
+    return d*height*width + h*width + w
+
 def pack_seqdim(tensor, B):
     shapelist = list(tensor.shape)
     B_, S = shapelist[:2]
@@ -198,6 +202,30 @@ def meshgrid3d(B, Z, Y, X, stack=False, norm=False, device='cuda'):
         return grid
     else:
         return grid_z, grid_y, grid_x
+
+def normalize_grid3d(grid_z, grid_y, grid_x, Z, Y, X, clamp_extreme=True):
+    # make things in [-1,1]
+    grid_z = 2.0*(grid_z / float(Z-1)) - 1.0
+    grid_y = 2.0*(grid_y / float(Y-1)) - 1.0
+    grid_x = 2.0*(grid_x / float(X-1)) - 1.0
+    
+    if clamp_extreme:
+        grid_z = torch.clamp(grid_z, min=-2.0, max=2.0)
+        grid_y = torch.clamp(grid_y, min=-2.0, max=2.0)
+        grid_x = torch.clamp(grid_x, min=-2.0, max=2.0)
+    
+    return grid_z, grid_y, grid_x
+
+def normalize_grid2d(grid_y, grid_x, Y, X, clamp_extreme=True):
+    # make things in [-1,1]
+    grid_y = 2.0*(grid_y / float(Y-1)) - 1.0
+    grid_x = 2.0*(grid_x / float(X-1)) - 1.0
+    
+    if clamp_extreme:
+        grid_y = torch.clamp(grid_y, min=-2.0, max=2.0)
+        grid_x = torch.clamp(grid_x, min=-2.0, max=2.0)
+        
+    return grid_y, grid_x
     
 def normalize_gridcloud3d(xyz, Z, Y, X, clamp_extreme=True):
     # make things in [-1,1]
