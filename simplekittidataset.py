@@ -69,7 +69,7 @@ class SimpleKittiDataset(torch.utils.data.Dataset):
             inds = np.random.choice(S_, size=self.S, replace=False)
         else:
             inds = list(range(self.S))
-~
+
         rgb_camXs = rgb_camXs[inds]
         xyz_veloXs = xyz_veloXs[inds]
         cam_T_velos = cam_T_velos[inds]
