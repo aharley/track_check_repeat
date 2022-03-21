@@ -73,8 +73,8 @@ This repo | **0.58** | **0.58** | **0.54** | **0.48** | **0.42** | **0.29** | **
 
 mAP@IOU | 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6 | 0.7 
 --- | --- | --- | --- |--- |--- |--- |--- 
-Paper | 0.43 | 0.4 | 0.37 | 0.35 | 0.33 | 0.30 | **0.21**
-This repo | **0.60** | **0.59** | **0.59** | **0.56** | **0.49** | **0.23** | 0.10
+Paper | 0.43 | 0.4 | 0.37 | 0.35 | 0.33 | 0.30 | 0.21
+This repo | **0.60** | **0.59** | **0.59** | **0.56** | **0.49** | **0.40** | **0.23** 
 
 
 ### Differences from the paper
@@ -146,22 +146,22 @@ It will end by printing out a summary like this (for the provided checkpoint):
 ```
 ----------
 BEV accuracy summary:
-map@iou=0.1: 0.45
-map@iou=0.2: 0.45
-map@iou=0.3: 0.44
-map@iou=0.4: 0.38
-map@iou=0.5: 0.32
-map@iou=0.6: 0.21
-map@iou=0.7: 0.07
+map@iou=0.1: 0.58
+map@iou=0.2: 0.58
+map@iou=0.3: 0.54
+map@iou=0.4: 0.48
+map@iou=0.5: 0.42
+map@iou=0.6: 0.29
+map@iou=0.7: 0.10
 ----------
 perspective accuracy summary:
-map@iou=0.1: 0.46
-map@iou=0.2: 0.45
-map@iou=0.3: 0.45
-map@iou=0.4: 0.44
-map@iou=0.5: 0.43
-map@iou=0.6: 0.35
-map@iou=0.7: 0.20
+map@iou=0.1: 0.60
+map@iou=0.2: 0.59
+map@iou=0.3: 0.59
+map@iou=0.4: 0.56
+map@iou=0.5: 0.49
+map@iou=0.6: 0.40
+map@iou=0.7: 0.23
 ----------
 ```
 
