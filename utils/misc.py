@@ -4,6 +4,8 @@ import utils.geom
 import numpy as np
 from cc3d import connected_components
 import cv2
+import torchvision.transforms as transforms
+import random
 
 def get_any_boxes_from_binary(binary, N, min_voxels=3, min_side=1, count_mask=None):
     B, Z, Y, X = list(binary.shape)
@@ -397,3 +399,63 @@ def rigid_transform_3d_py_helper(xyz0, xyz1, do_scaling=False):
         
     rt = utils.geom.merge_rt_py(R, t)
     return rt, c
+
+def get_color_distortion(s=1.0, p_jitter=0.8, p_grayscale=0.2):
+    # s is the strength of color distortion.
+    color_jitter = transforms.ColorJitter(0.8*s, 0.8*s, 0.8*s, 0.2*s)
+    rnd_color_jitter = transforms.RandomApply([color_jitter], p=p_jitter)
+    rnd_gray = transforms.RandomGrayscale(p_grayscale)
+    color_distort = transforms.Compose([
+    rnd_color_jitter,
+    rnd_gray])
+    return color_distort
+
+def apply_random_blur_and_noise(rgb):
+    B, C, H, W = list(rgb.shape)
+
+    for b in list(range(B)):
+        rgb_b = rgb[b]
+
+        rgb_b = rgb_b+0.5
+    
+        gaussian_blur = transforms.GaussianBlur(kernel_size=9)
+
+        if random.random() > 0.5:
+            rgb_b = gaussian_blur(rgb_b)
+
+        if random.random() > 0.5:
+            rgb_b = (rgb_b + torch.randn_like(rgb_b)*0.05).clamp(0, 1)
+
+        rgb_b = rgb_b - 0.5
+
+        rgb[b] = rgb_b
+    
+    return rgb
+
+def apply_color_augs(rgb, amount=0.5):
+    B, C, H, W = list(rgb.shape)
+
+    to_pil = transforms.ToPILImage()
+    from_pil = transforms.ToTensor()
+    
+    for b in list(range(B)):
+        rgb_b = rgb[b]
+
+        # rgb_b = rgb_b.detach().cpu()
+        rgb_b = rgb_b+0.5
+        # rgb_b = to_pil(rgb_b)
+    
+        color_distort = get_color_distortion(s=amount)
+        gaussian_blur = transforms.GaussianBlur(kernel_size=9)
+
+        rgb_b = color_distort(rgb_b)
+
+        if random.random() > 0.5:
+            rgb_b = gaussian_blur(rgb_b)
+            # print("applying gaussian blur")
+
+        rgb_b = rgb_b - 0.5
+
+        rgb[b] = rgb_b
+    
+    return rgb
