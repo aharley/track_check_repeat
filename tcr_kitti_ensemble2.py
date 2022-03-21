@@ -231,7 +231,7 @@ def run_model(B, raft, model_2d, model_3d, d, sw, export_vis=False, export_npzs=
         
         # return early, without trying to find objects
         if export_vis:
-            grey = torch.mean(rgb_cams[:,0], dim=1, keepdim=True).repeat(1, 3, 1, 1)
+            grey = torch.mean(rgb_cam0, dim=1, keepdim=True).repeat(1, 3, 1, 1)
             save_vis(utils.improc.back2color((grey+0.5)*0.5-0.5), step_name)
 
         return total_loss, metrics
@@ -246,7 +246,6 @@ def run_model(B, raft, model_2d, model_3d, d, sw, export_vis=False, export_npzs=
 
     # convert the pointcloud into a depth map
     depth_cam0, valid_cam0 = utils.geom.create_depth_image(pix_T_cam, xyz_cam0, H, W, offset_amount=0)
-    # depth_cam1, valid_cam1 = utils.geom.create_depth_image(pix_T_cams[:,1], xyz_cam1, H, W, offset_amount=0)
 
     # convert egomotion+depth into a flow field, and take a 2d difference
     flow_01_ego = utils.geom.depthrt2flow(depth_cam0, cam1_T_cam0, pix_T_cam) * valid_cam0
@@ -301,7 +300,6 @@ def run_model(B, raft, model_2d, model_3d, d, sw, export_vis=False, export_npzs=
     # find one set of objects using motion
     boxlist1_mem, scorelist1, tidlist1, connlist1 = utils.misc.get_any_boxes_from_binary(
         (occ_keepB*occ_keepA).squeeze(1), N, min_voxels=128, min_side=2, count_mask=occ_keepB*occ_keepA)
-    connlist1 = connlist1 # * occ_keepB * occ_keepA
 
     # find a second set using the models
     boxlist2_mem, scorelist2, tidlist2, connlist2 = utils.misc.get_any_boxes_from_binary(
@@ -336,6 +334,7 @@ def run_model(B, raft, model_2d, model_3d, d, sw, export_vis=False, export_npzs=
                 mask = mask[0,0].cpu().numpy()
                 if np.sum(mask) > min_area:
                     seg_xyz_cam_list.append(xyz_cam_here)
+                    # close the hull
                     mask = skimage.morphology.convex_hull.convex_hull_image(mask)
                     connlist_2d.append(torch.from_numpy(mask.reshape(1, H, W)).float().cuda())
                     connlist_3d.append(conn_union)
