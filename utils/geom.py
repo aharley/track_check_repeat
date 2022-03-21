@@ -2,6 +2,7 @@ import torch
 import utils.basic
 import numpy as np
 import torchvision.ops as ops
+import math
 
 def eye_3x3(B, device='cuda'):
     rt = torch.eye(3, device=torch.device(device)).view(1,3,3).repeat([B, 1, 1])
@@ -11,6 +12,32 @@ def eye_4x4(B, device='cuda'):
     rt = torch.eye(4, device=torch.device(device)).view(1,4,4).repeat([B, 1, 1])
     return rt
 
+def angular_l1_norm(e, g, dim=1, keepdim=False):
+    # inputs are shaped B x N
+    # returns a tensor sized B x N, with the dist in every slot
+    
+    # if our angles are in [0, 360] we can follow this stack overflow answer:
+    # https://gamedev.stackexchange.com/questions/4467/comparing-angles-and-working-out-the-difference
+    # wrap2pi brings the angles to [-180, 180]; adding pi puts them in [0, 360]
+    e = wrap2pi(e)+np.pi
+    g = wrap2pi(g)+np.pi
+    # now our angles are in [0, 360]
+    l = torch.abs(np.pi - torch.abs(torch.abs(e-g) - np.pi))
+    return torch.sum(l, dim=dim, keepdim=keepdim)
+
+def angular_l1_dist(e, g):
+    # inputs are shaped B x N
+    # returns a tensor sized B x N, with the dist in every slot
+    
+    # if our angles are in [0, 360] we can follow this stack overflow answer:
+    # https://gamedev.stackexchange.com/questions/4467/comparing-angles-and-working-out-the-difference
+    # wrap2pi brings the angles to [-180, 180]; adding pi puts them in [0, 360]
+    e = wrap2pi(e)+np.pi
+    g = wrap2pi(g)+np.pi
+    # now our angles are in [0, 360]
+    l = torch.abs(np.pi - torch.abs(torch.abs(e-g) - np.pi))
+    return l
+
 def safe_inverse(a):
     B, _, _ = list(a.shape)
     inv = a.clone()
@@ -18,6 +45,26 @@ def safe_inverse(a):
     inv[:, :3, :3] = r_transpose
     inv[:, :3, 3:4] = -torch.matmul(r_transpose, a[:, :3, 3:4])
     return inv
+
+def rad2deg(rad):
+    return rad*180.0/np.pi
+
+def deg2rad(deg):
+    return deg/180.0*np.pi
+
+def wrap2pi(rad_angle):
+    # puts the angle into the range [-pi, pi]
+    return torch.atan2(torch.sin(rad_angle), torch.cos(rad_angle))
+
+def split_rt_single(rt):
+    r = rt[:3, :3]
+    t = rt[:3, 3].view(3)
+    return r, t
+
+def split_rt(rt):
+    r = rt[:, :3, :3]
+    t = rt[:, :3, 3].view(-1, 3)
+    return r, t
 
 def merge_rt(r, t):
     # r is B x 3 x 3
@@ -33,6 +80,32 @@ def merge_rt(r, t):
     rt[:,:3,:3] = r
     rt[:,:3,3] = t
     return rt
+
+def split_rtlist(rtlist):
+    B, N, D, E = list(rtlist.shape)
+    assert(D==4)
+    assert(E==4)
+
+    __p = lambda x: utils.basic.pack_seqdim(x, B)
+    __u = lambda x: utils.basic.unpack_seqdim(x, B)
+    rlist_, tlist_ = split_rt(__p(rtlist))
+    rlist, tlist = __u(rlist_), __u(tlist_)
+    return rlist, tlist
+
+def merge_rtlist(rlist, tlist):
+    B, N, D, E = list(rlist.shape)
+    assert(D==3)
+    assert(E==3)
+    B, N, F = list(tlist.shape)
+    assert(F==3)
+
+    __p = lambda x: utils.basic.pack_seqdim(x, B)
+    __u = lambda x: utils.basic.unpack_seqdim(x, B)
+    rlist_, tlist_ = __p(rlist), __p(tlist)
+    rtlist_ = merge_rt(rlist_, tlist_)
+    rtlist = __u(rtlist_)
+    return rtlist
+
 
 def pixels2camera3(xyz,pix_T_cam):
     x,y,z = xyz[:,:,0],xyz[:,:,1],xyz[:,:,2]
@@ -405,27 +478,6 @@ def create_depth_image_single(xy, z, H, W, force_positive=True, max_val=100.0, s
             depth[inds] = mini_z
         # cool; this is rougly as fast as the parallel, and as accurate as the serial
         
-        if False:
-            print('inds', inds.shape)
-            unique, inverse, counts = torch.unique(inds, return_inverse=True, return_counts=True)
-            print('unique', unique.shape)
-
-            perm = torch.arange(inverse.size(0), dtype=inverse.dtype, device=inverse.device)
-            inverse, perm = inverse.flip([0]), perm.flip([0])
-            perm = inverse.new_empty(unique.size(0)).scatter_(0, inverse, perm)
-
-            # new_inds = inds[inverse_inds]
-            # depth[new_inds] = z[unique_inds]
-
-            depth[unique] = z[perm]
-
-            # now for the duplicates...
-
-            dup = counts > 1
-            dup_unique = unique[dup]
-            print('dup_unique', dup_unique.shape)
-            depth[dup_unique] = 0.5
-        
     if force_positive:
         # valid = (depth > 0.0).float()
         depth[torch.where(depth == 0.0)] = max_val
@@ -559,26 +611,6 @@ def xyd2pointcloud(xyd, pix_T_cam):
     fx, fy, x0, y0 = split_intrinsics(pix_T_cam)
     xyz = pixels2camera(xyd[:,:,0], xyd[:,:,1], xyd[:,:,2], fx, fy, x0, y0)
     return xyz
-
-def rad2deg(rad):
-    return rad*180.0/np.pi
-
-def deg2rad(deg):
-    return deg/180.0*np.pi
-
-def wrap2pi(rad_angle):
-    # puts the angle into the range [-pi, pi]
-    return torch.atan2(torch.sin(rad_angle), torch.cos(rad_angle))
-
-def split_rt_single(rt):
-    r = rt[:3, :3]
-    t = rt[:3, 3].view(3)
-    return r, t
-
-def split_rt(rt):
-    r = rt[:, :3, :3]
-    t = rt[:, :3, 3].view(-1, 3)
-    return r, t
 
 def split_lrt(lrt):
     # splits a B x 19 tensor
@@ -729,3 +761,263 @@ def crop_and_resize(im, box2d, PH, PW, box2d_is_normalized=True):
 
     return rgb_crop
     
+def get_random_rt(B,
+                  rx_amount=5.0,
+                  ry_amount=5.0,
+                  rz_amount=5.0,
+                  t_amount=1.0,
+                  sometimes_zero=False,
+                  return_pieces=False,
+                  y_zero=False):
+    # t_amount is in meters
+    # r_amount is in degrees
+    
+    rx_amount = np.pi/180.0*rx_amount
+    ry_amount = np.pi/180.0*ry_amount
+    rz_amount = np.pi/180.0*rz_amount
+
+    ## translation
+    tx = np.random.uniform(-t_amount, t_amount, size=B).astype(np.float32)
+    ty = np.random.uniform(-t_amount/2.0, t_amount/2.0, size=B).astype(np.float32)
+    tz = np.random.uniform(-t_amount, t_amount, size=B).astype(np.float32)
+
+    if y_zero:
+        ty = ty * 0
+    
+    ## rotation
+    rx = np.random.uniform(-rx_amount, rx_amount, size=B).astype(np.float32)
+    ry = np.random.uniform(-ry_amount, ry_amount, size=B).astype(np.float32)
+    rz = np.random.uniform(-rz_amount, rz_amount, size=B).astype(np.float32)
+
+    if sometimes_zero:
+        rand = np.random.uniform(0.0, 1.0, size=B).astype(np.float32)
+        prob_of_zero = 0.5
+        rx = np.where(np.greater(rand, prob_of_zero), rx, np.zeros_like(rx))
+        ry = np.where(np.greater(rand, prob_of_zero), ry, np.zeros_like(ry))
+        rz = np.where(np.greater(rand, prob_of_zero), rz, np.zeros_like(rz))
+        tx = np.where(np.greater(rand, prob_of_zero), tx, np.zeros_like(tx))
+        ty = np.where(np.greater(rand, prob_of_zero), ty, np.zeros_like(ty))
+        tz = np.where(np.greater(rand, prob_of_zero), tz, np.zeros_like(tz))
+        
+    t = np.stack([tx, ty, tz], axis=1)
+    t = torch.from_numpy(t)
+    rx = torch.from_numpy(rx)
+    ry = torch.from_numpy(ry)
+    rz = torch.from_numpy(rz)
+    r = eul2rotm(rx, ry, rz)
+    rt = merge_rt(r, t).cuda()
+
+    if return_pieces:
+        return t.cuda(), rx.cuda(), ry.cuda(), rz.cuda()
+    else:
+        return rt
+    
+def get_random_scale(B, low=0.5, high=1.5):
+    # return a scale matrix
+    scale = torch.rand(B, 1, 1, device=torch.device('cuda')) * (high  - low) + low
+    scale_matrix = scale * eye_4x4(B)
+    scale_matrix[:, 3, 3] = 1.0 # fix the last element
+    return scale_matrix
+
+def get_pts_inbound_lrt(xyz, lrt, mult_pad=1.0, add_pad=0.0):
+    B, N, D = list(xyz.shape)
+    B1, C = lrt.shape
+    assert(B == B1)
+    assert(C == 19)
+    assert(D == 3)
+
+    lens, cam_T_obj = split_lrt(lrt)
+    obj_T_cam = safe_inverse(cam_T_obj)
+
+    xyz_obj = apply_4x4(obj_T_cam, xyz) # B x N x 3
+    x = xyz_obj[:, :, 0] # B x N
+    y = xyz_obj[:, :, 1]
+    z = xyz_obj[:, :, 2]
+    lx = lens[:, 0:1] * mult_pad + add_pad # B
+    ly = lens[:, 1:2] * mult_pad + add_pad # B
+    lz = lens[:, 2:3] * mult_pad + add_pad # B
+
+    x_valid = (x >= -lx/2.0).bool() & (x <= lx/2.0).bool()
+    y_valid = (y >= -ly/2.0).bool() & (y <= ly/2.0).bool()
+    z_valid = (z >= -lz/2.0).bool() & (z <= lz/2.0).bool()
+    inbounds = x_valid.bool() & y_valid.bool() & z_valid.bool() # B x N
+
+    return inbounds
+
+def random_occlusion(xyz, lrtlist, scorelist, pix_T_cam, H, W, mask_size=20, occ_prob=0.5, occlude_bkg_too=False):
+    # with occ_prob, we create a random mask. else no operation
+    num_try = 10
+    max_dist = 200.0
+    # lrtlist is B x 19
+    B, N, D = list(xyz.shape)
+    B, N_obj, C = lrtlist.shape
+    assert(C == 19)
+    depth, valid = create_depth_image(pix_T_cam, xyz, H, W) # B x 1 x H x W
+
+    clist_cam = get_clist_from_lrtlist(lrtlist) # B x N_obj x 3
+    clist_pix = camera2pixels(clist_cam, pix_T_cam) # B x N_obj x 2
+    clist_pix = torch.round(clist_pix).long()
+    # we create a mask around the center of the box
+    xyz_new_s = torch.zeros(B, H*W, 3, device=torch.device('cuda'))
+
+    # print(N_obj)
+
+    mask = torch.ones_like(depth)
+
+    for b in range(B):
+        for n in range(N_obj):
+            if np.random.uniform() < occ_prob and scorelist[b, n]:
+                inbound = get_pts_inbound_lrt(xyz[b:b+1], lrtlist[b:b+1, n]) # 1 x N
+                inb_pts_cnt = torch.sum(inbound)
+
+                # print('inb_ori:', inb_pts_cnt)
+
+                for _ in range(num_try):
+                    rand_offset = torch.randint(-mask_size//2, mask_size//2, size=(1, 2), device=torch.device('cuda'))
+                    mask_center = clist_pix[b, n:n+1] + rand_offset # 1 x 2
+                    mask_lower_bound = mask_center - mask_size // 2
+                    mask_upper_bound = mask_center + mask_size // 2
+                    mask_lower_bound_x = mask_lower_bound[:, 0]
+                    mask_lower_bound_y = mask_lower_bound[:, 1]
+                    mask_upper_bound_x = mask_upper_bound[:, 0]
+                    mask_upper_bound_y = mask_upper_bound[:, 1]
+
+                    mask_lower_bound_x = torch.clamp(mask_lower_bound_x, 0, W-1) # each shape 1
+                    mask_upper_bound_x = torch.clamp(mask_upper_bound_x, 0, W-1)
+                    mask_lower_bound_y = torch.clamp(mask_lower_bound_y, 0, H-1)
+                    mask_upper_bound_y = torch.clamp(mask_upper_bound_y, 0, H-1)
+
+                    # do the masking
+                    depth_b = depth[b:b+1].clone() # 1 x 1 x H x W
+                    mask_b = torch.ones_like(depth_b)
+                    mask_b[:, :, mask_lower_bound_y:mask_upper_bound_y, mask_lower_bound_x:mask_upper_bound_x] = 0
+                    depth_b[:, :, mask_lower_bound_y:mask_upper_bound_y, mask_lower_bound_x:mask_upper_bound_x] = max_dist
+                    # set to a large value, i.e. mask out these area
+
+                    if occlude_bkg_too:
+                        bkg_mask_size = mask_size * 2
+                        mask_center_x = torch.randint(bkg_mask_size//2, W - bkg_mask_size//2, size=(1,), device=torch.device('cuda'))
+                        mask_center_y = torch.randint(bkg_mask_size//2, H - bkg_mask_size//2, size=(1,), device=torch.device('cuda'))
+                        mask_center = torch.stack([mask_center_x, mask_center_y], dim=1)
+                        mask_lower_bound = mask_center - bkg_mask_size // 2
+                        mask_upper_bound = mask_center + bkg_mask_size // 2
+                        mask_lower_bound_x = mask_lower_bound[:, 0]
+                        mask_lower_bound_y = mask_lower_bound[:, 1]
+                        mask_upper_bound_x = mask_upper_bound[:, 0]
+                        mask_upper_bound_y = mask_upper_bound[:, 1]
+
+                        mask_lower_bound_x = torch.clamp(mask_lower_bound_x, 0, W-1) # each shape 1
+                        mask_upper_bound_x = torch.clamp(mask_upper_bound_x, 0, W-1)
+                        mask_lower_bound_y = torch.clamp(mask_lower_bound_y, 0, H-1)
+                        mask_upper_bound_y = torch.clamp(mask_upper_bound_y, 0, H-1)
+
+                        # do the additional masking
+                        mask_b[:, :, mask_lower_bound_y:mask_upper_bound_y, mask_lower_bound_x:mask_upper_bound_x] = 0
+                        depth_b[:, :, mask_lower_bound_y:mask_upper_bound_y, mask_lower_bound_x:mask_upper_bound_x] = max_dist
+                        # set to a large value, i.e. mask out these area
+
+                    xyz_new = depth2pointcloud(depth_b, pix_T_cam[b:b+1]) # 1 x N x 3
+                    inbound_new = get_pts_inbound_lrt(xyz_new, lrtlist[b:b+1, n]) # 1 x N
+                    inb_pts_cnt_new = torch.sum(inbound_new)
+
+                    # print(inb_pts_cnt_new)
+
+                    if (inb_pts_cnt_new < inb_pts_cnt and
+                        inb_pts_cnt_new > (inb_pts_cnt / 8.0) and
+                        inb_pts_cnt_new >= 3): # if we occlude part but not all of the obj, they we are good
+                        depth[b:b+1] = depth_b
+                        mask[b:b+1] = mask_b
+                        # all good
+                        break
+                
+
+        # convert back to pointcloud
+        xyz_new = depth2pointcloud(depth[b:b+1], pix_T_cam[b:b+1]) # 1 x N x 3
+        xyz_new_s[b:b+1] = xyz_new
+
+    return xyz_new_s, mask
+
+def apply_scaling_to_lrt(Y_T_X, lrt_X):
+    return apply_scaling_to_lrtlist(Y_T_X, lrt_X.unsqueeze(1)).squeeze(1)
+
+def apply_scaling_to_lrtlist(Y_T_X, lrtlist_X): 
+    B, N, D = list(lrtlist_X.shape)
+    assert(D==19)
+    B2, E, F = list(Y_T_X.shape)
+    assert(B2==B)
+    assert(E==4 and F==4)
+
+    # Y_T_X is a scaling matrix, i.e. all off-diagnol terms are 0
+    lenlist_X, rtlist_X = split_lrtlist(lrtlist_X)
+    # rtlist_X is B x N x 4 x 4
+
+    # lenlist is B x N x 3
+    rtlist_X_ = rtlist_X.reshape(B*N, 4, 4)
+    rlist_X_, tlist_X_ = split_rt(rtlist_X_) # B*N x 3 x 3 and B*N x 3
+
+    lenlist_Y_ = apply_4x4(Y_T_X, lenlist_X).reshape(B*N, 3)
+    tlist_Y_ = apply_4x4(Y_T_X, tlist_X_.reshape(B, N, 3)).reshape(B*N, 3)
+    rlist_Y_ = rlist_X_ 
+
+    rtlist_Y = merge_rt(rlist_Y_, tlist_Y_).reshape(B, N, 4, 4)
+    lenlist_Y = lenlist_Y_.reshape(B, N, 3)
+    lrtlist_Y = merge_lrtlist(lenlist_Y, rtlist_Y)
+
+    return lrtlist_Y
+
+def apply_4x4_to_lrtlist(Y_T_X, lrtlist_X):
+    B, N, D = list(lrtlist_X.shape)
+    assert(D==19)
+    B2, E, F = list(Y_T_X.shape)
+    assert(B2==B)
+    assert(E==4 and F==4)
+    
+    lenlist, rtlist_X = split_lrtlist(lrtlist_X)
+    # rtlist_X is B x N x 4 x 4
+
+    Y_T_Xs = Y_T_X.unsqueeze(1).repeat(1, N, 1, 1)
+    Y_T_Xs_ = Y_T_Xs.view(B*N, 4, 4)
+    rtlist_X_ = rtlist_X.reshape(B*N, 4, 4)
+    rtlist_Y_ = utils.basic.matmul2(Y_T_Xs_, rtlist_X_)
+    rtlist_Y = rtlist_Y_.reshape(B, N, 4, 4)
+    lrtlist_Y = merge_lrtlist(lenlist, rtlist_Y)
+    return lrtlist_Y
+
+def apply_4x4_to_lrt(Y_T_X, lrt_X):
+    B, D = list(lrt_X.shape)
+    assert(D==19)
+    B2, E, F = list(Y_T_X.shape)
+    assert(B2==B)
+    assert(E==4 and F==4)
+    return apply_4x4_to_lrtlist(Y_T_X, lrt_X.unsqueeze(1)).squeeze(1)
+
+def apply_4x4s_to_lrts(Ys_T_Xs, lrt_Xs):
+    B, S, D = list(lrt_Xs.shape)
+    assert(D==19)
+    B2, S2, E, F = list(Ys_T_Xs.shape)
+    assert(B2==B)
+    assert(S2==S)
+    assert(E==4 and F==4)
+    
+    lenlist, rtlist_X = split_lrtlist(lrt_Xs)
+    # rtlist_X is B x N x 4 x 4
+
+    Ys_T_Xs_ = Ys_T_Xs.view(B*S, 4, 4)
+    rtlist_X_ = rtlist_X.view(B*S, 4, 4)
+    rtlist_Y_ = utils.basic.matmul2(Ys_T_Xs_, rtlist_X_)
+    rtlist_Y = rtlist_Y_.view(B, S, 4, 4)
+    lrtlist_Y = merge_lrtlist(lenlist, rtlist_Y)
+    return lrtlist_Y
+
+def rotm2eul_py(R):
+    # R is 3x3
+    sy = math.sqrt(R[0,0] * R[0,0] +  R[1,0] * R[1,0])
+    if sy > 1e-6: # singular
+        x = math.atan2(R[2,1] , R[2,2])
+        y = math.atan2(-R[2,0], sy)
+        z = math.atan2(R[1,0], R[0,0])
+    else:
+        x = math.atan2(-R[1,2], R[1,1])
+        y = math.atan2(-R[2,0], sy)
+        z = 0
+    return x, y, z

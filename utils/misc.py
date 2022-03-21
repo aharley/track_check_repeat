@@ -459,3 +459,54 @@ def apply_color_augs(rgb, amount=0.5):
         rgb[b] = rgb_b
     
     return rgb
+
+def rescore_lrtlist_with_inbound(lrtlist_camR, scorelist, Z, Y, X, vox_util, pad=0.0):
+    # lrtlist_camR is B x N x 19
+    # assume R is the coord where we want to check inbound-ness
+    B, N, D = list(lrtlist_camR.shape)
+    assert(D==19)
+    clist = utils.geom.get_clist_from_lrtlist(lrtlist_camR)
+    # this is B x N x 3
+
+    xlist, ylist, zlist = torch.unbind(clist, dim=2)
+    inboundlist_0 = vox_util.get_inbounds(torch.stack([xlist+pad, ylist, zlist], dim=2), Z, Y, X, already_mem=False).float()
+    inboundlist_1 = vox_util.get_inbounds(torch.stack([xlist-pad, ylist, zlist], dim=2), Z, Y, X, already_mem=False).float()
+    inboundlist_2 = vox_util.get_inbounds(torch.stack([xlist, ylist, zlist+pad], dim=2), Z, Y, X, already_mem=False).float()
+    inboundlist_3 = vox_util.get_inbounds(torch.stack([xlist, ylist, zlist-pad], dim=2), Z, Y, X, already_mem=False).float()
+    inboundlist = inboundlist_0*inboundlist_1*inboundlist_2*inboundlist_3
+    scorelist = scorelist * inboundlist
+    return scorelist
+
+def rescore_lrtlist_with_pointcloud(lrtlist_camX, xyz_camX, scorelist, thresh=1.0, min_pts=1):
+    # boxlist_camR is B x N x 9
+    B, N, D = list(lrtlist_camX.shape)
+    assert(D==19)
+    xyzlist_camX = utils.geom.get_clist_from_lrtlist(lrtlist_camX)
+    # this is B x N x 3
+
+    # xyz_camX is B x V x 3
+    xyz_camX = xyz_camX[:,::10] # for speed
+    xyz_camX = xyz_camX.unsqueeze(1)
+    # xyz_camX is B x 1 x V x 3
+    xyzlist_camX = xyzlist_camX.unsqueeze(2)
+    # xyzlist_camX is B x N x 1 x 3
+
+    # dists = torch.norm(xyz_camX - xyzlist_camX, dim=3)
+    dists = torch.min(xyz_camX - xyzlist_camX, dim=3)[0]
+    # this is B x N x V
+
+    # there should be at least 1 pt within 1m of the centroid
+    # mindists = torch.min(dists, 2)[0]
+    # ok = (mindists < thresh).float()
+    num_ok = torch.sum(dists < thresh, dim=2)
+    ok = (num_ok >= min_pts).float()
+    scorelist = scorelist * ok
+    return scorelist
+
+def add_loss(name, total_loss, loss, coeff, summ_writer=None):
+    if summ_writer is not None:
+        # summ_writer should be Summ_writer object in utils.improc
+        summ_writer.summ_scalar('unscaled_%s' % name, loss)
+        summ_writer.summ_scalar('scaled_%s' % name, coeff*loss)
+    total_loss = total_loss + coeff*loss
+    return total_loss

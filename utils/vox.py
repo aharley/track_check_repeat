@@ -245,16 +245,8 @@ class Vox_util(object):
         B, C, H, W = list(rgb_camB.shape)
 
         xyz_memA = utils.basic.gridcloud3d(B, Z, Y, X, norm=False)
-        # grid_z, grid_y, grid_x = utils.basic.meshgrid3d(B, Z, Y, X)
-        # # these are B x Z x Y x X
-        # # these represent the mem grid coordinates
-
-        # # we need to convert these to pixel coordinates
-        # x = torch.reshape(grid_x, [B, -1])
-        # y = torch.reshape(grid_y, [B, -1])
-        # z = torch.reshape(grid_z, [B, -1])
-        # # these are B x N
-        # xyz_mem = torch.stack([x, y, z], dim=2)
+        # these represent the mem grid coordinates
+        # we need to convert these to pixel coordinates
 
         xyz_camA = self.Mem2Ref(xyz_memA, Z, Y, X, assert_cube=assert_cube)
 
@@ -285,6 +277,42 @@ class Vox_util(object):
         values = torch.reshape(values, (B, C, Z, Y, X))
         return values
 
+    def apply_mem_T_ref_to_lrtlist(self, lrtlist_cam, Z, Y, X, assert_cube=False):
+        # lrtlist is B x N x 19, in cam coordinates
+        # transforms them into mem coordinates, including a scale change for the lengths
+        B, N, C = list(lrtlist_cam.shape)
+        assert(C==19)
+        mem_T_cam = self.get_mem_T_ref(B, Z, Y, X, assert_cube=assert_cube)
+
+        # apply_4x4 will work for the t part
+        lenlist_cam, rtlist_cam = utils.geom.split_lrtlist(lrtlist_cam)
+        __p = lambda x: utils.basic.pack_seqdim(x, B)
+        __u = lambda x: utils.basic.unpack_seqdim(x, B)
+        rlist_cam_, tlist_cam_ = utils.geom.split_rt(__p(rtlist_cam))
+        # rlist_cam_ is B*N x 3 x 3
+        # tlist_cam_ is B*N x 3
+        # tlist_cam = __u(tlist_cam_)
+        tlist_mem_ = __p(utils.geom.apply_4x4(mem_T_cam, __u(tlist_cam_)))
+        # rlist does not need to change, since cam is aligned with mem
+        rlist_mem_ = rlist_cam_.clone()
+        rtlist_mem = __u(utils.geom.merge_rt(rlist_mem_, tlist_mem_))
+        # this is B x N x 4 x 4
+
+        # next we need to scale the lengths
+        lenlist_cam, _ = utils.geom.split_lrtlist(lrtlist_cam)
+        # this is B x N x 3
+        xlist, ylist, zlist = lenlist_cam.chunk(3, dim=2)
+        
+        vox_size_X = (self.XMAX-self.XMIN)/float(X)
+        vox_size_Y = (self.YMAX-self.YMIN)/float(Y)
+        vox_size_Z = (self.ZMAX-self.ZMIN)/float(Z)
+        lenlist_mem = torch.cat([xlist / vox_size_X,
+                                 ylist / vox_size_Y,
+                                 zlist / vox_size_Z], dim=2)
+        # merge up
+        lrtlist_mem = utils.geom.merge_lrtlist(lenlist_mem, rtlist_mem)
+        return lrtlist_mem
+    
     def apply_ref_T_mem_to_lrtlist(self, lrtlist_mem, Z, Y, X, assert_cube=False):
         # lrtlist is B x N x 19, in mem coordinates
         # transforms them into cam coordinates, including a scale change for the lengths
@@ -318,4 +346,192 @@ class Vox_util(object):
         # merge up
         lrtlist_cam = utils.geom.merge_lrtlist(lenlist_cam, rtlist_cam)
         return lrtlist_cam
+    
+    def convert_xyz_to_visibility(self, xyz, Z, Y, X, target_T_given=None, ray_add=0.0):
+        # xyz is in camera coordinates
+        B, N, C = list(xyz.shape)
+        assert(C==3)
+        voxels = torch.zeros(B, 1, Z, Y, X, dtype=torch.float32, device=xyz.device)
+        for b in list(range(B)):
+            if target_T_given is not None:
+                voxels[b,0] = self.fill_ray_single(xyz[b], Z, Y, X, target_T_given=target_T_given[b], ray_add=ray_add)
+            else:
+                voxels[b,0] = self.fill_ray_single(xyz[b], Z, Y, X, ray_add=ray_add)
+        return voxels
+
+    def convert_xyz_to_visibility_samples(self, xyz, target_T_given=None, ray_add=0.0, samps=100, dist_eps=0.01, rand=True):
+        # xyz is in camera coordinates
+        B, N, C = list(xyz.shape)
+        assert(C==3)
+        free_xyz = torch.zeros(B, samps*N, 3, dtype=torch.float32, device=xyz.device)
+        for b in list(range(B)):
+            if target_T_given is not None:
+                free_xyz[b] = self.continuous_fill_ray_single(xyz[b], samps=samps, target_T_given=target_T_given[b], ray_add=ray_add, dist_eps=dist_eps, rand=rand)
+            else:
+                free_xyz[b] = self.continuous_fill_ray_single(xyz[b], samps=samps, ray_add=ray_add, dist_eps=dist_eps, rand=rand)
+        return free_xyz
+
+    def fill_ray_single(self, xyz, Z, Y, X, target_T_given=None, ray_add=0.0):
+        # xyz is N x 3, and in cam coords
+        # we want to fill a voxel tensor with 1's at these inds,
+        # and also at any ind along the ray before it
+
+        # target_T_given, if it exists, takes us to the coords we want to be in;
+        # it is 4 x 4
+
+        xyz = torch.reshape(xyz, (-1, 3))
+        x, y, z = xyz[:,0], xyz[:,1], xyz[:,2]
+        # these are N
+
+        x = x.unsqueeze(1)
+        y = y.unsqueeze(1)
+        z = z.unsqueeze(1)
+
+        # get the hypotenuses
+        u = torch.sqrt(x**2+z**2) # flat to ground
+        v = torch.sqrt(x**2+y**2+z**2)
+        w = torch.sqrt(x**2+y**2)
+
+        # the ray is along the v line
+        # we want to find xyz locations along this line
+
+        # get the angles
+        EPS = 1e-6
+        u = torch.clamp(u, min=EPS) # note >=0 already
+        v = torch.clamp(v, min=EPS) # note >=0 already
+        sin_theta = y/v # soh 
+        cos_theta = u/v # cah
+        sin_alpha = z/u # soh
+        cos_alpha = x/u # cah
+
+        samps = int(np.sqrt(Y**2 + Z**2))*2
+        # for each proportional distance in [0.0, 1.0], generate a new hypotenuse
+        dists = torch.linspace(0.0, 1.0, samps, device=xyz.device)
+        dists = torch.reshape(dists, (1, samps))
+        v_ = dists * v.repeat(1, samps)
+        v_ = v_ + ray_add
+
+        # now, for each of these v_, we want to generate the xyz
+        y_ = sin_theta*v_
+        u_ = torch.abs(cos_theta*v_)
+        z_ = sin_alpha*u_
+        x_ = cos_alpha*u_
+        # these are the ref coordinates we want to fill
+        x = x_.flatten()
+        y = y_.flatten()
+        z = z_.flatten()
+
+        xyz = torch.stack([x,y,z], dim=1).unsqueeze(0)
+        if target_T_given is not None:
+            target_T_given = target_T_given.unsqueeze(0)
+            xyz = utils.geom.apply_4x4(target_T_given, xyz)
+        xyz = self.Ref2Mem(xyz, Z, Y, X)
+        xyz = torch.squeeze(xyz, dim=0)
+        # these are the mem coordinates we want to fill
+
+        return self.get_occupancy_single(xyz, Z, Y, X)
+
+    def continuous_fill_ray_single(self, xyz, samps=100, target_T_given=None, ray_add=0.0, dist_eps=0.01, rand=True):
+        # xyz is N x 3, and in cam coords
+        # we want to fill a voxel tensor with 1's at these inds,
+        # and also at any ind along the ray before it
+
+        # target_T_given, if it exists, takes us to the coords we want to be in;
+        # it is 4 x 4
+
+        xyz = torch.reshape(xyz, (-1, 3))
+        x, y, z = xyz[:,0], xyz[:,1], xyz[:,2]
+        # these are N
+        N = x.shape[0]
+
+        x = x.unsqueeze(1)
+        y = y.unsqueeze(1)
+        z = z.unsqueeze(1)
+
+        # get the hypotenuses
+        u = torch.sqrt(x**2+z**2) # flat to ground
+        v = torch.sqrt(x**2+y**2+z**2)
+        w = torch.sqrt(x**2+y**2)
+
+        # the ray is along the v line
+        # we want to find xyz locations along this line
+
+        # get the angles
+        EPS = 1e-6
+        u = torch.clamp(u, min=EPS)
+        v = torch.clamp(v, min=EPS)
+        sin_theta = y/v # soh 
+        cos_theta = u/v # cah
+        sin_alpha = z/u # soh
+        cos_alpha = x/u # cah
+
+        # for each proportional distance in [0.0, 1.0-eps], generate a new hypotenuse
+        if rand:
+            dists = torch.rand(N*samps, device=xyz.device) * (1.0 - dist_eps)
+            dists = torch.reshape(dists, (N, samps))
+            v_ = dists * v.repeat(1, samps)
+        else:
+            dists = torch.linspace(0.0, 1.0-dist_eps, samps, device=xyz.device)
+            dists = torch.reshape(dists, (1, samps))
+            v_ = dists * v.repeat(1, samps)
+        v_ = v_ + ray_add
+
+        # now, for each of these v_, we want to generate the xyz
+        y_ = sin_theta*v_
+        u_ = torch.abs(cos_theta*v_)
+        z_ = sin_alpha*u_
+        x_ = cos_alpha*u_
+        # these are the ref coordinates we want to fill
+        x = x_.flatten()
+        y = y_.flatten()
+        z = z_.flatten()
+
+        xyz = torch.stack([x,y,z], dim=1).unsqueeze(0)
+        if target_T_given is not None:
+            target_T_given = target_T_given.unsqueeze(0)
+            xyz = utils.geom.apply_4x4(target_T_given, xyz)
+        xyz = torch.squeeze(xyz, dim=0) # N, 3
+        # these are the cam coordinates we want to fill
+        return xyz
+    
+    def get_freespace(self, xyz, occ, ray_add=0.0):
+        # xyz is B x N x 3
+        # occ is B x H x W x D x 1
+        B, C, Z, Y, X = list(occ.shape)
+        assert(C==1)
+        vis = self.convert_xyz_to_visibility(xyz, Z, Y, X, ray_add=ray_add)
+        # visible space is all free unless it's occupied
+        free = (1.0-(occ>0.0).float())*vis
+        return free
+
+    def xyz2circles(self, xyz, radius, Z, Y, X, already_mem=True):
+        # xyz is B x N x 3
+        # radius is B x N
+        # output is B x N x Z x Y x X
+        B, N, D = list(xyz.shape)
+        assert(D==3)
+        if not already_mem:
+            xyz = self.Ref2Mem(xyz, Z, Y, X)
+        grid_z, grid_y, grid_x = utils.basic.meshgrid3d(B, Z, Y, X, stack=False, norm=False)
+        # note the default stack is on -1
+        grid = torch.stack([grid_x, grid_y, grid_z], dim=1)
+        # this is B x 3 x Z x Y x X
+        xyz = xyz.reshape(B, N, 3, 1, 1, 1)
+        grid = grid.reshape(B, 1, 3, Z, Y, X)
+        # this is B x N x Z x Y x X
+
+        # round the xyzs, so that at least one value matches the grid perfectly,
+        # and we get a value of 1 there (since exp(0)==1)
+        xyz = xyz.round()
+
+        radius = radius.clamp(min=0.01)
+        
+        # interpret radius as sigma
+        dist_grid = torch.sum((grid - xyz)**2, dim=2, keepdim=False)
+        # this is B x N x Z x Y x X
+        radius = radius.reshape(B, N, 1, 1, 1)
+        mask = torch.exp(-dist_grid/(2*radius*radius))
+        # zero out near zero 
+        mask[mask < 0.001] = 0.0
+        return mask
     
