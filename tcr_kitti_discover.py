@@ -271,78 +271,10 @@ def run_model(raft, d, sw, export_vis=False, export_npzs=False, step_name='temp'
     else:
         conn_seg = torch.zeros_like(occ_mem0)
 
-    # # ------------------
-    # # evaluate mAP
-    # # ------------------
-    # boxlist_rect_g = d['boxlist_camXs'].float().cuda()[:,0] # note this is already in rectified coords
-    # tidlist_g = d['tidlist_s'].long().cuda()[:,0]
-    # scorelist_g = d['scorelist_s'].float().cuda()[:,0]
-    # lrtlist_rect_g = utils.geom.convert_boxlist_to_lrtlist(boxlist_rect_g)
-    # scorelist_g = utils.misc.rescore_lrtlist_with_inbound(lrtlist_rect_g, scorelist_g, Z, Y, X, vox_util, pad=0.0)
-
     lrtlist_mem = utils.geom.convert_boxlist_to_lrtlist(boxlist_mem)
     lrtlist_cam = vox_util.apply_ref_T_mem_to_lrtlist(lrtlist_mem, Z, Y, X)
     scorelist = torch.ones_like(lrtlist_cam[:,:,0])
     tidlist = torch.ones_like(lrtlist_cam[:,:,0]).long()
-    # lrtlist_rect_e = utils.geom.apply_4x4_to_lrtlist(rect_T_cams[:,0], lrtlist_cam)
-    # rylist = boxlist_mem[:,:,7]
-
-    # lrtlist_e, lrtlist_g, scorelist_e, scorelist_g = utils.eval.drop_invalid_lrts(
-    #     lrtlist_rect_e, lrtlist_rect_g, scorelist, scorelist_g)
-    # boxlist_e = utils.geom.get_boxlist2d_from_lrtlist(pix_T_rects[:,0], lrtlist_e, H, W)
-    # boxlist_g = utils.geom.get_boxlist2d_from_lrtlist(pix_T_rects[:,0], lrtlist_g, H, W)
-
-    # rylist = rylist[:,:boxlist_e.shape[1]]
-
-    # if torch.sum(scorelist_g) > 0 and torch.sum(scorelist_e) > 0:
-    #     Ne = lrtlist_e.shape[1]
-    #     Ng = lrtlist_g.shape[1]
-    #     ious_3d = np.zeros((Ne, Ng), dtype=np.float32)
-    #     ious_bev = np.zeros((Ne, Ng), dtype=np.float32)
-    #     for i in list(range(Ne)):
-    #         for j in list(range(Ng)):
-    #             iou_3d, iou_bev = utils.geom.get_iou_from_corresponded_lrtlists(lrtlist_e[:, i:i+1], lrtlist_g[:, j:j+1])
-    #             ious_3d[i, j] = iou_3d[0, 0]
-    #             ious_bev[i, j] = iou_bev[0, 0]
-    #     ious_bev = torch.max(torch.from_numpy(ious_bev).float().cuda(), dim=1)[0]
-    #     ious_bev = ious_bev.unsqueeze(0)
-
-    #     ious_per = np.zeros((Ne), dtype=np.float32)
-    #     boxlist_e_np = boxlist_e.detach().cpu().numpy()
-    #     boxlist_g_np = boxlist_g.detach().cpu().numpy()
-    #     for i in list(range(Ne)):
-    #         iou_2d = utils.box.boxlist_2d_iou(boxlist_e_np[:,i:i+1].repeat(Ng, axis=1), boxlist_g_np)
-    #         ious_per[i] = np.max(iou_2d)
-    #     ious_per = torch.from_numpy(ious_per).float().cuda().reshape(1, Ne)
-
-    #     maps_3d, maps_bev = utils.eval.get_mAP_from_lrtlist(lrtlist_e, scorelist_e, lrtlist_g, iou_thresholds)
-    #     metrics['maps_bev'] = maps_bev
-    #     # print('maps_bev', maps_bev)
-
-    #     maps_per = utils.eval.get_mAP_from_2d_boxlists(boxlist_e, scorelist_e, boxlist_g, iou_thresholds)
-    #     metrics['maps_per'] = maps_per
-    #     # print('maps_per', maps_per)
-
-    #     if vis_early and sw is not None and sw.save_this:
-    #         sw.summ_lrtlist('5_boxes/lrtlist_e', rgb_cam, lrtlist_e, ious_bev, 2*torch.ones_like(scorelist_e).long(), pix_T_rects[:,0], frame_id=maps_bev[0])
-    #         sw.summ_boxlist2d('5_boxes/boxlist_e', rgb_cam, boxlist_e, ious_per, 2*torch.ones_like(scorelist_e).long(), frame_id=maps_per[0])
-    #         sw.summ_lrtlist('5_boxes/lrtlist_g', rgb_cam, lrtlist_g, scorelist_g, 2*torch.ones_like(scorelist_g).long(), pix_T_rects[:,0])
-    #         sw.summ_boxlist2d('5_boxes/boxlist_g', rgb_cam, boxlist_g, scorelist_g, 2*torch.ones_like(scorelist_g).long())
-            
-    # elif torch.sum(scorelist_g==0) and torch.sum(scorelist_e==0):
-    #     # mAP unaffected
-    #     metrics['maps_bev'] = None
-    #     metrics['maps_per'] = None
-    #     # ious_bev = torch.ones_like(lrtlist_e[:,:,0])
-    #     # ious_per = torch.ones_like(lrtlist_e[:,:,0])
-    #     ious_bev = None
-    #     ious_per = None
-    #     # maps_bev = None
-    # else:
-    #     ious_bev = None
-    #     ious_per = None
-    #     # ious_bev = torch.ones_like(lrtlist_e[:,:,0])
-    #     # ious_per = torch.ones_like(lrtlist_e[:,:,0])
 
     # ------------------
     # export pseudolabels for the next stage
@@ -407,13 +339,6 @@ def run_model(raft, d, sw, export_vis=False, export_npzs=False, step_name='temp'
                 vox_util,
                 already_mem=False)
             
-            # sw.summ_boxlist2d('5_boxes/boxlist_e', rgb_cam, boxlist_e, scorelist, tidlist)
-            # if ious_bev is not None:
-            #     sw.summ_lrtlist('5_boxes/lrtlist_e', rgb_cam, lrtlist_e, ious_bev, 2*torch.ones_like(scorelist_e).long(), pix_T_rects[:,0], frame_id=maps_bev[0])
-            #     sw.summ_boxlist2d('5_boxes/boxlist_e', rgb_cam, boxlist_e, ious_per, 2*torch.ones_like(scorelist_e).long(), frame_id=maps_per[0])
-                # sw.summ_lrtlist('5_boxes/lrtlist_g', rgb_cam, lrtlist_g, scorelist_g, 2*torch.ones_like(scorelist_g).long(), pix_T_rects[:,0])
-                # sw.summ_boxlist2d('5_boxes/boxlist_g', rgb_cam, boxlist_g, scorelist_g, 2*torch.ones_like(scorelist_g).long())
-            
             if export_vis:
                 seg_vis = sw.summ_rgb('', (grey+seg)/2.0, only_return=True)
                 save_vis(seg_vis, step_name)
@@ -428,7 +353,7 @@ def run_model(raft, d, sw, export_vis=False, export_npzs=False, step_name='temp'
     
 def main(
         output_name,
-        exp_name='kd00',
+        exp_name='debug',
         max_iters=4000,
         log_freq=1, # note we only log if we discovered something, so log1 is OK
         export_npzs=True,
@@ -480,10 +405,6 @@ def main(
     requires_grad(raft.parameters(), False)
     raft.eval()
 
-    n_pool = max_iters*2
-    map_bev_pools = [utils.misc.SimplePool(n_pool, version='np') for i in list(range(len(iou_thresholds)))]
-    map_per_pools = [utils.misc.SimplePool(n_pool, version='np') for i in list(range(len(iou_thresholds)))]
-    
     while global_step < max_iters:
         torch.cuda.empty_cache()
         
@@ -513,22 +434,9 @@ def main(
             step_name = '%s_%s_%04d' % (seq_name, output_name, global_step)
             total_loss, metrics = run_model(raft, sample, sw_t, export_vis=export_vis, export_npzs=export_npzs, step_name=step_name)
 
-            if metrics['maps_bev'] is not None:
-                for i,m in enumerate(metrics['maps_bev']):
-                    map_bev_pools[i].update([m])
-                for i,m in enumerate(metrics['maps_per']):
-                    map_per_pools[i].update([m])
-
-            for i in range(len(iou_thresholds)):
-                sw_t.summ_scalar('map_bev/iou_%.1f' % iou_thresholds[i], map_bev_pools[i].mean())
-                sw_t.summ_scalar('map_per/iou_%.1f' % iou_thresholds[i], map_per_pools[i].mean())
-
         iter_time = time.time()-iter_start_time
-        print('%s; step %06d/%d; rtime %.2f; itime %.2f; map@%.1f %.2f; map@%.1f %.2f; map@%.1f %.2f' % (
-            model_name, global_step, max_iters, read_time, iter_time,
-            iou_thresholds[0], map_bev_pools[0].mean(),
-            iou_thresholds[2], map_bev_pools[2].mean(),
-            iou_thresholds[4], map_bev_pools[4].mean()))
+        print('%s; step %06d/%d; rtime %.2f; itime %.2f' % (
+            model_name, global_step, max_iters, read_time, iter_time))
 
         del total_loss
         
