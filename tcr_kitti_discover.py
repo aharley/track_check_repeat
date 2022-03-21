@@ -1,7 +1,7 @@
 import time
+import os
 import numpy as np
 import imageio
-import os
 import saverloader
 import skimage.morphology
 
