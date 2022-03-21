@@ -207,7 +207,7 @@ def main(
         save_freq=1000,
         shuffle=True,
         use_augs=True,
-        B=2,
+        B=4,
         lr=1e-3,
         init_dir='',
         load_step=False,
