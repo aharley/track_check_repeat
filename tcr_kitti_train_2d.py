@@ -1,38 +1,11 @@
 import time
-# import argparse
 import numpy as np
-# import timeit
-# import imageio
-# # import matplotlib
-# # import tensorflow as tf
-# # import scipy.misc
-# import io
-# import os
-# # import math
-# # from PIL import Image
-# # matplotlib.use('Agg') # suppress plot showing
-# import sys
-
-# import matplotlib.pyplot as plt
-
-# import matplotlib.animation as animation
-# import cv2
 import saverloader
 import skimage.morphology
-
 from fire import Fire
 
-# import utils.perceiver
-# import utils.py
-# import utils.box
 import utils.misc
 import utils.improc
-# import utils.vox
-# import utils.grouping
-# import random
-# import glob
-# import color2d
-
 from utils.basic import print_, print_stats
 
 from pseudokittidataset import PseudoKittiDataset
@@ -42,7 +15,6 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 
 from tensorboardX import SummaryWriter
-
 import torch.nn.functional as F
 
 import nets.seg2dnet
@@ -51,25 +23,6 @@ import random
 device = 'cuda'
 random.seed(125)
 np.random.seed(125)
-
-scene_centroid_x = 0.0
-scene_centroid_y = 1.0
-scene_centroid_z = 20.0
-
-scene_centroid = np.array([scene_centroid_x,
-                           scene_centroid_y,
-                           scene_centroid_z]).reshape([1, 3])
-scene_centroid = torch.from_numpy(scene_centroid).float().cuda()
-
-XMIN, XMAX = -16, 16
-ZMIN, ZMAX = -16, 16
-YMIN, YMAX = -1, 1
-bounds = (XMIN, XMAX, YMIN, YMAX, ZMIN, ZMAX)
-
-Z, Y, X = 256, 16, 256
-Z2, Y2, X2 = Z//2, Y//2, X//2
-Z4, Y4, X4 = Z//4, Y//4, X//4
-Z8, Y8, X8 = Z//8, Y//8, X//8
 
 def requires_grad(parameters, flag=True):
     for p in parameters:
