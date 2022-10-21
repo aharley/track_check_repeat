@@ -3,17 +3,17 @@
 This is the official code release for our CVPR21 paper on unsupervised detection and tracking. It produces results slightly better than reported in the paper.
 
 
-**[[Paper](https://openaccess.thecvf.com/content/CVPR2021/papers/Harley_Track_Check_Repeat_An_EM_Approach_to_Unsupervised_Tracking_CVPR_2021_paper.pdf)] [[Project Page](http://www.cs.cmu.edu/~aharley/em_cvpr21/)]**
+**[[Paper](https://openaccess.thecvf.com/content/CVPR2021/papers/Harley_Track_Check_Repeat_An_EM_Approach_to_Unsupervised_Tracking_CVPR_2021_paper.pdf)] [[Project Page](https://track-check-repeat.github.io)]**
 
 
-<img src='http://cs.cmu.edu/~aharley/images/em_loop_kitti.gif'>
+<img src='https://adamharley.com/images/em_loop_kitti.gif'>
 
 **We use ensemble agreement between 2d and 3d models, as well as motion cues, to unsupervisedly learn object detectors from scratch.** Top: 3d detections. Middle: 2d segmentation. Bottom-left: unprojected 2d segmentation, in a bird's eye view. Bottom-right: 3d detections, in a bird's eye view. 
 
 
 ### Overview
 
-<img src="http://www.cs.cmu.edu/~aharley/em_cvpr21/images/fig1.png" width="800px"/>
+<img src="https://track-check-repeat.github.io/images/fig1.png" width="800px"/>
 
 **An EM approach to unsupervised tracking.** We present an expectation-maximization (EM) method, which takes RGBD
 videos as input, and produces object detectors and trackers as output. (a) We begin with a handcrafted E step, which uses optical flow
@@ -171,7 +171,7 @@ map@iou=0.7: 0.23
 If you use this code for your research, please cite:
 
 **Track, Check, Repeat: An EM Approach to Unsupervised Tracking**.
-[Adam W. Harley](https://cs.cmu.edu/~aharley),
+[Adam W. Harley](https://adamharley.com),
 [Yiming Zuo](https://zuoym15.github.io/),
 [Jing Wen](https://wenj.github.io/),
 Shubhankar Potdar,
